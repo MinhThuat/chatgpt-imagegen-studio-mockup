@@ -81,6 +81,7 @@
     <div id="bar">
       <h1>🎨 Imagegen Studio · Seed-pro</h1>
       <div class="sp"></div>
+      <span id="ctok" title="Han token codex — bam de refresh" style="color:var(--mut); cursor:pointer">🔑 …</span>
       <span id="cnt" style="color:var(--mut)"></span>
       <button id="restart" title="Code Studio da doi — bam de nap lai">↻ Restart (code moi)</button>
       <button id="new">＋ New (xoa gallery)</button>
@@ -182,6 +183,41 @@ async function checkVersion(){
   } catch(e){}
 }
 checkVersion(); setInterval(checkVersion, 3000);
+
+// ---------- Badge han token codex (+ bam de refresh) ----------
+const ctok = $('ctok');
+function fmtMin(m){
+  if (m == null) return '?';
+  if (m >= 1440) return Math.floor(m/1440) + 'd';
+  if (m >= 60) return Math.floor(m/60) + 'h';
+  return m + 'ph';
+}
+async function pollCodex(){
+  try {
+    const s = await (await fetch('/codex_status')).json();
+    if (!s.ok) { ctok.textContent = '🔑 chua login'; ctok.style.color = '#e0902e';
+      ctok.title = (s.error || '') + ' — chay ./login.sh'; return; }
+    if (s.expired || (s.remaining_min != null && s.remaining_min <= 0)) {
+      ctok.textContent = '🔑 het han'; ctok.style.color = '#e06';
+    } else {
+      ctok.textContent = '🔑 ' + fmtMin(s.remaining_min);
+      ctok.style.color = (s.remaining_min != null && s.remaining_min < 60) ? '#e0902e' : 'var(--mut)';
+    }
+    ctok.title = 'Token codex con ' + fmtMin(s.remaining_min)
+      + (s.last_refresh ? ' · refresh ' + s.last_refresh : '') + ' — bam de refresh';
+  } catch(e){}
+}
+ctok.onclick = async () => {
+  const old = ctok.textContent; ctok.textContent = '🔑 …';
+  try {
+    const s = await (await fetch('/codex_refresh', {method:'POST'})).json();
+    if (s.refresh_error) toast('Refresh loi: ' + s.refresh_error + ' — chay ./login.sh');
+    else toast('Da refresh token codex');
+  } catch(e){ toast('Refresh that bai'); ctok.textContent = old; }
+  pollCodex();
+};
+pollCodex(); setInterval(pollCodex, 60000);
+
 restartBtn.onclick = async () => {
   restartBtn.disabled = true; toast('Dang restart server…');
   try { await fetch('/restart', {method:'POST'}); } catch(e){}

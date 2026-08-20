@@ -12,6 +12,7 @@ Anh gen ra thu muc OUT se tu hien len gallery (poll moi 2s).
 import argparse
 import asyncio
 import base64
+import json
 import os
 import re
 import shutil
@@ -240,7 +241,66 @@ async def _gen_one(prompt, img_paths, out_path):
     if proc.returncode == 0 and os.path.isfile(out_path):
         _write(out_path + ".txt", prompt.encode("utf-8"))   # sidecar -> gallery hien prompt duoi anh
         return {"ok": True, "file": fname}
-    return {"ok": False, "file": fname, "error": (out or b"").decode("utf-8", "replace")[-300:]}
+    err = (out or b"").decode("utf-8", "replace")[-300:]
+    print("[gen] FAIL %s: %s" % (fname, err.replace("\n", " ")[-200:]), flush=True)
+    return {"ok": False, "file": fname, "error": err}
+
+
+async def _warm_codex_token():
+    """Refresh/xoay token codex MOT LAN truoc batch song song. Tra None neu OK, hoac chuoi loi.
+
+    Vi sao: CLI chi refresh khi gap 401. Neu access token het han, N tien trinh gen song song
+    cung 401 -> cung goi refresh voi CUNG refresh_token. OAuth OpenAI xoay refresh_token (dung 1 lan)
+    -> chi 1 tien trinh doi duoc, con lai 'refresh_token no longer valid' -> fail. Refresh truoc 1 lan
+    (ghi access token moi vao auth.json) thi ca batch dung token con han, khong ai phai refresh nua.
+    """
+    proc = await asyncio.create_subprocess_exec(
+        sys.executable, os.path.join(ROOT, "refresh_token.py"),
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
+    out, _ = await proc.communicate()
+    if proc.returncode != 0:
+        return (out or b"").decode("utf-8", "replace").strip()[-200:]
+    return None
+
+
+AUTH_PATH = os.path.join(HOME, ".codex", "auth.json")
+
+
+def _codex_status():
+    """Han cua access token codex: decode claim 'exp' trong JWT (khong tra token ra ngoai).
+    Tra {ok, remaining_min, expired, exp, last_refresh} hoac {ok:False, error}."""
+    try:
+        with open(AUTH_PATH, encoding="utf-8") as f:
+            auth = json.load(f)
+    except OSError:
+        return {"ok": False, "error": "chua co ~/.codex/auth.json (chua codex login)"}
+    except (ValueError, TypeError):
+        return {"ok": False, "error": "auth.json hong"}
+    tok = (auth.get("tokens") or {}).get("access_token") or ""
+    exp = None
+    parts = tok.split(".")
+    if len(parts) == 3:   # JWT header.payload.signature
+        try:
+            pad = parts[1] + "=" * (-len(parts[1]) % 4)
+            exp = json.loads(base64.urlsafe_b64decode(pad)).get("exp")
+        except Exception:
+            exp = None
+    now = time.time()
+    remaining = int((exp - now) // 60) if exp else None
+    return {"ok": True, "exp": exp, "remaining_min": remaining,
+            "expired": exp is not None and exp <= now, "last_refresh": auth.get("last_refresh")}
+
+
+async def api_codex_status(request):
+    return web.json_response(_codex_status())
+
+
+async def api_codex_refresh(request):
+    err = await _warm_codex_token()   # xoay token ngay (dung chung ham warm cua batch gen)
+    st = _codex_status()
+    if err:
+        st["refresh_error"] = err
+    return web.json_response(st)
 
 
 async def api_gen(request):
@@ -252,6 +312,12 @@ async def api_gen(request):
     setname = os.path.basename((d.get("set") or "seedset").strip()) or "seedset"
     if not prompts:
         return web.json_response({"error": "Chua co prompt de gen."}, status=400)
+
+    warm_err = await _warm_codex_token()   # xoay token 1 lan -> tranh dua nhau refresh khi song song
+    if warm_err:
+        return web.json_response(
+            {"error": "Refresh token codex that bai (%s). Chay ./login.sh roi thu lai." % warm_err},
+            status=502)
 
     out_dir = os.path.join(request.app["OUT"], setname)
     os.makedirs(out_dir, exist_ok=True)
@@ -290,6 +356,8 @@ def main():
         web.get("/gallery", gallery),
         web.post("/prompt", api_prompt),
         web.post("/gen", api_gen),
+        web.get("/codex_status", api_codex_status),
+        web.post("/codex_refresh", api_codex_refresh),
         web.get("/media", media),
         web.get("/reveal", reveal),
         web.get("/delete", delete),
