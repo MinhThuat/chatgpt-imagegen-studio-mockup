@@ -1,0 +1,17 @@
+# Thu vien Python cho du an chatgpt-imagegen
+#
+# APP CHINH (tao anh: CLI `chatgpt-imagegen` + flow_server.py) KHONG can gi ca
+# -> chi dung thu vien chuan cua Python. Bo qua file nay neu ban khong dung Trello.
+#
+# Cac thu vien duoi CHI can cho 2 script phu upload/xoa anh len Trello:
+#   upload_trello_1_image.py, delete_trello_list_images.py
+#
+# Cai (may khong co sudo/venv):
+#   python3 -m pip install --user --break-system-packages -r requirements.txt
+
+aiohttp>=3.9
+python-dotenv>=1.0
+
+# Tuy chon: Pillow -> shrink anh ve 512px truoc khi gui Seed-pro (re + nhanh token hon).
+# Thieu Pillow van chay (gui anh nguyen ban). Panel Seed-pro doc ARK_KEY tu file .env trong thu muc nay.
+# Pillow>=10

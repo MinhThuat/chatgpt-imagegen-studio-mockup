@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Imagegen Studio</title>
+<style>
+  :root { --bg:#0f1115; --panel:#171a21; --line:#262b36; --fg:#e6e9ef; --mut:#8b93a3; --accent:#6ea8fe; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--fg);
+    font:14px/1.4 system-ui,Segoe UI,Roboto,sans-serif; overflow:hidden; }
+  #app { display:flex; flex-direction:column; height:100vh; }
+
+  #top { flex:1 1 auto; min-height:0; display:flex; flex-direction:column; }
+  #bar { display:flex; align-items:center; gap:12px; padding:8px 12px;
+    border-bottom:1px solid var(--line); background:var(--panel); }
+  #bar h1 { font-size:14px; margin:0; font-weight:600; letter-spacing:.3px; }
+  #bar .sp { flex:1; }
+  button { background:#222835; color:var(--fg); border:1px solid var(--line);
+    border-radius:7px; padding:6px 12px; cursor:pointer; font-size:13px; }
+  button:hover { border-color:var(--accent); color:var(--accent); }
+  button:disabled { opacity:.5; cursor:default; }
+  #toast { position:fixed; bottom:14px; left:50%; transform:translateX(-50%);
+    background:#1f2733; color:var(--fg); border:1px solid var(--accent); border-radius:8px;
+    padding:8px 16px; font-size:13px; opacity:0; transition:opacity .2s; pointer-events:none; z-index:20; }
+  #toast.show { opacity:1; }
+
+  #gallery { flex:1; overflow-y:auto; padding:14px; display:grid; gap:12px;
+    grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); align-content:start; }
+  #gallery a { display:block; position:relative; border-radius:10px; overflow:hidden;
+    border:1px solid var(--line); background:var(--panel); }
+  #gallery img { width:100%; display:block; }
+  #gallery .cap { font-size:11px; line-height:1.4; color:var(--mut); padding:6px 8px;
+    border-top:1px solid var(--line); white-space:pre-wrap; word-break:break-word;
+    max-height:5.6em; overflow-y:auto; }
+  #gallery .del { position:absolute; top:6px; right:6px; padding:2px 7px; font-size:13px;
+    background:rgba(20,24,31,.72); border-color:transparent; opacity:0; transition:opacity .15s; }
+  #gallery a:hover .del { opacity:1; }
+  #gallery .del:hover { background:#7a1f1f; border-color:#e06; color:#fff; }
+  #restart { display:none; background:#4a2f10; border-color:#e0902e; color:#ffcf8a; }
+  #empty { color:var(--mut); grid-column:1/-1; text-align:center; padding:60px 0; }
+
+  #divider { height:6px; background:var(--line); cursor:row-resize; flex:0 0 auto; }
+
+  /* ---- Bang dieu khien Seed-pro (thay terminal) ---- */
+  #panel { flex:0 0 40vh; min-height:150px; overflow-y:auto; background:var(--panel);
+    border-top:1px solid var(--line); padding:12px 14px; }
+  .prow { display:flex; gap:10px; align-items:flex-start; flex-wrap:wrap; margin-bottom:10px; }
+  #panel label { font-size:12px; color:var(--mut); display:flex; flex-direction:column; gap:3px; }
+  #panel input[type=text], #panel input[type=number], #panel textarea {
+    background:#0f1319; color:var(--fg); border:1px solid var(--line); border-radius:6px;
+    padding:6px 8px; font:13px/1.4 inherit; }
+  #panel textarea { width:100%; resize:vertical; }
+  #seedreq { min-width:300px; flex:1; min-height:38px; }
+  #seedcount { width:64px; }
+  #seedstatus { color:var(--mut); font-size:12px; align-self:center; }
+
+  .zone { flex:1; min-width:220px; min-height:88px; border:2px dashed var(--line); border-radius:10px;
+    padding:8px; background:#0f1319; cursor:pointer; display:flex; flex-direction:column; gap:6px; }
+  .zone.aux { flex:2; }
+  .zone.over { border-color:var(--accent); background:#141d2b; }
+  .zone .zt { font-size:12px; color:var(--mut); }
+  .zone .thumbs { display:flex; gap:6px; flex-wrap:wrap; }
+  .zone .th { position:relative; }
+  .zone .th img { height:56px; width:56px; object-fit:cover; border-radius:6px; border:1px solid var(--line); display:block; }
+  .zone .th .x { position:absolute; top:-6px; right:-6px; width:18px; height:18px; line-height:16px;
+    text-align:center; font-size:12px; border-radius:50%; background:#7a1f1f; color:#fff;
+    border:1px solid #e06; cursor:pointer; z-index:1; }
+  .zone .th .lbl { width:56px; margin-top:3px; font-size:10px; padding:2px 4px; background:#0f1319;
+    color:var(--fg); border:1px solid var(--line); border-radius:4px; }
+  .primary { background:#22406e; border-color:var(--accent); color:#dce8ff; }
+  .primary:hover { background:#2b5088; }
+  #seedprompts { margin-top:6px; display:flex; flex-direction:column; gap:5px; }
+  #seedprompts .pp { font-size:12px; color:var(--mut); line-height:1.45;
+    padding:5px 8px; background:#0f1319; border:1px solid var(--line); border-radius:6px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="top">
+    <div id="bar">
+      <h1>🎨 Imagegen Studio · Seed-pro</h1>
+      <div class="sp"></div>
+      <span id="cnt" style="color:var(--mut)"></span>
+      <button id="restart" title="Code Studio da doi — bam de nap lai">↻ Restart (code moi)</button>
+      <button id="new">＋ New (xoa gallery)</button>
+    </div>
+    <div id="gallery"><div id="empty">Nap anh o bang duoi -> bam ✨ Tao bo anh. Anh gen se hien o day.</div></div>
+  </div>
+  <div id="divider"></div>
+  <div id="panel">
+    <div class="prow">
+      <div class="zone" id="zprod">
+        <div class="zt">Anh san pham (chinh) — keo-tha / dan / bam de chon</div>
+        <div class="thumbs" id="tprod"></div>
+        <input type="file" id="fprod" accept="image/*" hidden>
+      </div>
+      <div class="zone aux" id="zaux">
+        <div class="zt">Anh phu tro (nhieu anh) — go nhan duoi moi anh de model biet do la gi (logo, mau vai…)</div>
+        <div class="thumbs" id="taux"></div>
+        <input type="file" id="faux" accept="image/*" multiple hidden>
+      </div>
+    </div>
+    <div class="prow">
+      <label style="flex:1">Yeu cau (tieng Viet)
+        <textarea id="seedreq" placeholder="vd: bo mockup coc su in hinh thu cung, phong studio sach"></textarea>
+      </label>
+      <label>So luong
+        <input type="number" id="seedcount" value="6" min="1" max="20">
+      </label>
+      <button id="seedgo" class="primary" style="align-self:center">✨ Tao bo anh</button>
+      <span id="seedstatus"></span>
+    </div>
+    <div id="seedprompts"></div>
+  </div>
+</div>
+<div id="toast"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+let toastT; const toastEl = $('toast');
+function toast(msg){ toastEl.textContent = msg; toastEl.classList.add('show');
+  clearTimeout(toastT); toastT = setTimeout(() => toastEl.classList.remove('show'), 2600); }
+const isImg = n => /\.(png|jpe?g|webp|gif)$/i.test(n || '');
+const readDataURL = f => new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(f); });
+
+// ---------- Gallery (poll OUT, "New" xoa view) ----------
+const gallery = $('gallery'), empty = $('empty'), cnt = $('cnt');
+let clearedAt = parseFloat(localStorage.getItem('clearedAt') || '0');
+const shown = new Set();
+let deletedCount = 0;
+
+async function poll(){
+  try {
+    const list = await (await fetch('/gallery')).json();
+    for (const it of list.slice().reverse()) {   // moi nhat truoc -> render nguoc de prepend
+      if (it.mtime <= clearedAt || shown.has(it.url)) continue;
+      shown.add(it.url);
+      empty.style.display = 'none';
+      const enc = it.url.split('p=')[1];
+      const a = document.createElement('a');
+      a.href = '#'; a.title = 'Mo thu muc chua anh: ' + it.name;
+      a.onclick = (e) => { e.preventDefault(); fetch('/reveal?p=' + enc); };
+      const img = document.createElement('img'); img.src = it.url; img.loading = 'lazy';
+      const del = document.createElement('button');
+      del.className = 'del'; del.textContent = '🗑'; del.title = 'Xoa anh (xoa ca file tren o dia)';
+      del.onclick = (e) => {
+        e.preventDefault(); e.stopPropagation();
+        if (!confirm('Xoa han file ' + it.name + ' ?')) return;
+        fetch('/delete?p=' + enc).then(r => {
+          if (!r.ok) { toast('Xoa that bai: ' + it.name); return; }
+          a.remove(); shown.delete(it.url); deletedCount++;
+          cnt.textContent = shown.size ? shown.size + ' anh' : '';
+          if (!shown.size) empty.style.display = '';
+          toast('Da xoa ' + it.name + ' — Ctrl+Z de khoi phuc');
+        });
+      };
+      a.appendChild(img); a.appendChild(del);
+      if (it.prompt) {
+        const cap = document.createElement('div'); cap.className = 'cap';
+        cap.textContent = it.prompt; cap.title = it.prompt;
+        cap.onclick = (e) => e.preventDefault();
+        a.appendChild(cap);
+      }
+      gallery.insertBefore(a, gallery.firstChild);
+    }
+    cnt.textContent = shown.size ? shown.size + ' anh' : '';
+  } catch(e){}
+}
+poll(); setInterval(poll, 2000);
+
+// ---------- Bao code doi + restart server ----------
+const restartBtn = $('restart');
+let notified = false;
+async function checkVersion(){
+  try {
+    const v = await (await fetch('/version')).json();
+    if (v.stale) {
+      restartBtn.style.display = 'inline-block';
+      if (!notified) { notified = true; toast('Code Studio da cap nhat — bam ↻ Restart de nap lai'); }
+    }
+  } catch(e){}
+}
+checkVersion(); setInterval(checkVersion, 3000);
+restartBtn.onclick = async () => {
+  restartBtn.disabled = true; toast('Dang restart server…');
+  try { await fetch('/restart', {method:'POST'}); } catch(e){}
+  setTimeout(() => location.reload(), 1500);
+};
+$('new').onclick = () => {
+  clearedAt = Date.now()/1000;
+  localStorage.setItem('clearedAt', clearedAt);
+  shown.clear();
+  [...gallery.querySelectorAll('a')].forEach(a => a.remove());
+  empty.style.display = ''; cnt.textContent = '';
+};
+
+// ---------- Divider keo doi cao bang duoi ----------
+const divider = $('divider'), panelEl = $('panel');
+divider.onmousedown = e => {
+  e.preventDefault();
+  const move = ev => { const h = Math.max(150, window.innerHeight - ev.clientY);
+    panelEl.style.flexBasis = h + 'px'; };
+  const up = () => { document.removeEventListener('mousemove',move); document.removeEventListener('mouseup',up); };
+  document.addEventListener('mousemove',move); document.addEventListener('mouseup',up);
+};
+
+// ---------- Nap anh reference vao 2 o (san pham / phu tro) ----------
+// State: moi anh la {file, url}. url = objectURL cho thumbnail, revoke khi xoa.
+let prod = null;    // {file, url}
+let aux = [];       // [{file, url}]
+
+function mk(file){ return { file, url: URL.createObjectURL(file), label: '' }; }
+function setProd(file){ if (prod) URL.revokeObjectURL(prod.url); prod = mk(file); render(); }
+function addAux(files){ for (const f of files) if (isImg(f.name) || f.type.startsWith('image/')) aux.push(mk(f)); render(); }
+
+function thumb(item, onx, withLabel){
+  const d = document.createElement('div'); d.className = 'th';
+  const im = document.createElement('img'); im.src = item.url; d.appendChild(im);
+  const x = document.createElement('div'); x.className = 'x'; x.textContent = '×';
+  x.onclick = (e) => { e.stopPropagation(); onx(); };
+  d.appendChild(x);
+  if (withLabel) {   // nhan RIENG cho tung anh phu -> khop 1-1, model biet anh nao la gi
+    const lb = document.createElement('input'); lb.className = 'lbl'; lb.type = 'text';
+    lb.placeholder = 'nhan…'; lb.value = item.label || '';
+    lb.onclick = e => e.stopPropagation();                 // bam vao o nhan khong mo file picker
+    lb.oninput = e => { item.label = e.target.value; };     // luu vao item -> ben vung qua re-render
+    d.appendChild(lb);
+  }
+  return d;
+}
+function render(){
+  const tp = $('tprod'); tp.innerHTML = '';
+  if (prod) tp.appendChild(thumb(prod, () => { URL.revokeObjectURL(prod.url); prod = null; render(); }, false));
+  const ta = $('taux'); ta.innerHTML = '';
+  aux.forEach((it, i) => ta.appendChild(thumb(it, () => { URL.revokeObjectURL(it.url); aux.splice(i,1); render(); }, true)));
+}
+
+// click o -> mo file picker
+$('zprod').onclick = () => $('fprod').click();
+$('zaux').onclick = () => $('faux').click();
+$('fprod').onchange = e => { if (e.target.files[0]) setProd(e.target.files[0]); e.target.value = ''; };
+$('faux').onchange = e => { addAux([...e.target.files]); e.target.value = ''; };
+
+// keo-tha vao tung o. Ho tro folder (aux lay het anh; san pham lay anh dau).
+function walkEntry(entry, out){
+  return new Promise(res => {
+    if (entry.isFile) entry.file(f => { if (isImg(f.name)) out.push(f); res(); }, () => res());
+    else if (entry.isDirectory) {
+      const rd = entry.createReader(), all = [];
+      const batch = () => rd.readEntries(async es => {
+        if (!es.length) { await Promise.all(all.map(e => walkEntry(e, out))); res(); return; }
+        all.push(...es); batch();
+      });
+      batch();
+    } else res();
+  });
+}
+async function filesFromDrop(dt){
+  const out = [];
+  const entries = dt.items ? [...dt.items].map(i => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean) : [];
+  if (entries.length) { for (const en of entries) await walkEntry(en, out); }
+  else { for (const f of dt.files) if (isImg(f.name)) out.push(f); }
+  return out;
+}
+function wireZone(zoneId, isProd){
+  const z = $(zoneId);
+  z.addEventListener('dragover', e => { e.preventDefault(); e.stopPropagation(); z.classList.add('over'); });
+  z.addEventListener('dragleave', e => { if (e.relatedTarget === null || !z.contains(e.relatedTarget)) z.classList.remove('over'); });
+  z.addEventListener('drop', async e => {
+    e.preventDefault(); e.stopPropagation(); z.classList.remove('over');
+    const files = await filesFromDrop(e.dataTransfer);
+    if (!files.length) { toast('Khong thay anh trong muc da tha'); return; }
+    if (isProd) { setProd(files[0]); toast('Da nap anh san pham'); }
+    else { addAux(files); toast('Da nap ' + files.length + ' anh phu'); }
+  });
+}
+wireZone('zprod', true);
+wireZone('zaux', false);
+// tha ra ngoai 2 o (tren trang) van chan trinh duyet mo anh, va cho vao aux cho tien
+window.addEventListener('dragover', e => e.preventDefault());
+window.addEventListener('drop', async e => {
+  if ($('zprod').contains(e.target) || $('zaux').contains(e.target)) return;   // da co zone lo
+  e.preventDefault();
+  const files = await filesFromDrop(e.dataTransfer);
+  if (files.length) { addAux(files); toast('Da nap ' + files.length + ' anh phu'); }
+});
+
+// ---------- Dan anh (Ctrl+V) — ke ca "Copy image" tu web ----------
+// Khong con xterm chan Ctrl+V -> bat o keydown, doc clipboard, them vao o (san pham neu trong, khong thi phu).
+window.addEventListener('keydown', async e => {
+  if (!((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'v')) return;
+  const tag = (e.target.tagName || '').toLowerCase();
+  if (tag === 'input' || tag === 'textarea') return;   // dang go text -> de paste text binh thuong
+  if (!navigator.clipboard || !navigator.clipboard.read) return;
+  let items;
+  try { items = await navigator.clipboard.read(); } catch(_) { return; }
+  const blobs = [];
+  for (const it of items) {
+    const t = it.types.find(x => x.startsWith('image/'));
+    if (t) blobs.push(await it.getType(t));
+  }
+  if (!blobs.length) return;
+  e.preventDefault();
+  const files = blobs.map((b, i) => new File([b], 'paste_' + i + '.' + (b.type.split('/')[1] || 'png'), {type:b.type}));
+  if (!prod) { setProd(files[0]); addAux(files.slice(1)); }
+  else addAux(files);
+  toast('Da dan ' + files.length + ' anh');
+}, true);
+
+// ---------- Ctrl+Z: khoi phuc anh vua xoa trong gallery ----------
+window.addEventListener('keydown', async e => {
+  if (!((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z')) return;
+  const tag = (e.target.tagName || '').toLowerCase();
+  if (tag === 'input' || tag === 'textarea') return;   // undo text trong o -> de trinh duyet lo
+  e.preventDefault();
+  if (deletedCount <= 0) { toast('Khong con anh de khoi phuc'); return; }
+  try {
+    const r = await (await fetch('/undo', {method:'POST'})).json();
+    if (r.restored) { deletedCount--; poll(); toast('Da khoi phuc ' + r.restored.split('/').pop()); }
+    else { deletedCount = 0; toast('Khong con anh de khoi phuc'); }
+  } catch(_) { toast('Khoi phuc that bai'); }
+}, true);
+
+// ---------- Tao bo anh: Seed-pro viet prompt -> gen thang ----------
+function renderPrompts(prompts){
+  const box = $('seedprompts'); box.innerHTML = '';
+  prompts.forEach((p, i) => {
+    const d = document.createElement('div'); d.className = 'pp';
+    d.textContent = (i + 1) + '. ' + p; box.appendChild(d);
+  });
+}
+$('seedgo').onclick = async () => {
+  if (!prod) { toast('Chua nap anh san pham'); return; }
+  const go = $('seedgo'), status = $('seedstatus');
+  go.disabled = true; $('seedprompts').innerHTML = '';
+  status.textContent = 'Seed-pro dang viet prompt…';
+  try {
+    const main_b64 = await readDataURL(prod.file);
+    const ref_b64s = [];
+    for (const it of aux) ref_b64s.push(await readDataURL(it.file));
+    const body = { main_b64, ref_b64s,
+      ref_labels: aux.map(it => (it.label || '').trim()),   // nhan khop 1-1 theo tung anh phu
+      request: $('seedreq').value, count: parseInt($('seedcount').value) || 6 };
+    const pr = await fetch('/prompt', { method:'POST', body: JSON.stringify(body) });
+    const pj = await pr.json();
+    if (!pr.ok) { status.textContent = 'Loi viet prompt: ' + (pj.error || pr.status); return; }
+    renderPrompts(pj.prompts);
+    status.textContent = pj.prompts.length + ' prompt (' + pj.seconds + 's) · dang gen (toi da 4 song song)… anh hien dan len gallery.';
+    const gr = await fetch('/gen', { method:'POST', body: JSON.stringify(
+      { prompts: pj.prompts, img_paths: pj.img_paths, set: pj.set }) });
+    const gj = await gr.json();
+    if (!gr.ok) { status.textContent = 'Loi gen: ' + (gj.error || gr.status); return; }
+    status.textContent = 'Xong: ' + gj.ok + '/' + gj.count + ' anh' + (gj.fail ? ' · ' + gj.fail + ' loi' : '') + ' · set ' + pj.set;
+    if (gj.fail && gj.failed && gj.failed.length) toast('Gen loi ' + gj.fail + ' anh: ' + (gj.failed[0].error || '').slice(0, 90));
+  } catch(e) { status.textContent = 'Loi: ' + e.message; }
+  finally { go.disabled = false; }
+};
+</script>
+</body>
+</html>
