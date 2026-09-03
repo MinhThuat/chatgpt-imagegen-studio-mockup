@@ -62,7 +62,11 @@ async def reveal(request):
     if not any(p == r or p.startswith(r + os.sep) for r in request.app["ROOTS"]) \
             or not os.path.isfile(p):
         return web.Response(status=404, text="not found")
-    subprocess.Popen(["xdg-open", os.path.dirname(p)])
+    d = os.path.dirname(p)
+    if sys.platform == "win32":
+        os.startfile(d)                       # noqa: S606 (Windows Explorer)
+    else:
+        subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", d])
     return web.Response(text="ok")
 
 
@@ -229,7 +233,7 @@ async def api_prompt(request):
 
 
 async def _gen_one(prompt, img_paths, out_path):
-    args = ["python3", os.path.join(ROOT, "chatgpt-imagegen"), prompt]
+    args = [sys.executable, os.path.join(ROOT, "chatgpt-imagegen"), prompt]
     for p in img_paths[:10]:
         args += ["-i", p]
     args += ["-o", out_path, "--size", "1024x1024", "--backend", "codex", "--quiet"]
@@ -260,6 +264,25 @@ async def _warm_codex_token():
     out, _ = await proc.communicate()
     if proc.returncode != 0:
         return (out or b"").decode("utf-8", "replace").strip()[-200:]
+    return None
+
+
+_LOGIN_PROC = None   # tien trinh `codex login` dang chay (da mo trinh duyet) -> tranh mo trung
+
+
+async def _codex_login():
+    """Chay `codex login` khi refresh_token chet han: no tu mo trinh duyet cho user dang nhap lai.
+    Fire-and-forget — khong doi login xong; user dang nhap tren browser roi bam Tao lai.
+    Tra None neu da khoi dong (hoac dang chay), hoac chuoi loi neu khong tim thay codex."""
+    global _LOGIN_PROC
+    if _LOGIN_PROC is not None and _LOGIN_PROC.returncode is None:
+        return None                                   # da co 1 login dang mo -> khong mo them
+    codex = shutil.which("codex")                     # resolve dung .cmd tren Windows
+    if not codex:
+        return "khong tim thay 'codex' tren PATH (cai: npm i -g @openai/codex)"
+    _LOGIN_PROC = await asyncio.create_subprocess_exec(
+        codex, "login",
+        stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
     return None
 
 
@@ -315,9 +338,13 @@ async def api_gen(request):
 
     warm_err = await _warm_codex_token()   # xoay token 1 lan -> tranh dua nhau refresh khi song song
     if warm_err:
-        return web.json_response(
-            {"error": "Refresh token codex that bai (%s). Chay ./login.sh roi thu lai." % warm_err},
-            status=502)
+        login_err = await _codex_login()   # token chet han -> tu mo trinh duyet dang nhap lai
+        if login_err:
+            msg = "Token codex het han va khong tu mo dang nhap duoc (%s). Chay: codex login" % login_err
+        else:
+            msg = ("Token codex het han. Da mo trinh duyet de dang nhap lai — "
+                   "dang nhap xong roi bam ✨ Tao bo anh lai.")
+        return web.json_response({"error": msg}, status=502)
 
     out_dir = os.path.join(request.app["OUT"], setname)
     os.makedirs(out_dir, exist_ok=True)
