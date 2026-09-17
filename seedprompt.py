@@ -17,7 +17,7 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 
 # BytePlus Ark (OpenAI-compatible). Model viet prompt = Seed-2.0-pro (da phuong thuc, doc anh).
 ARK_BASE_URL = os.environ.get("ARK_BASE_URL", "https://ark.ap-southeast.bytepluses.com/api/v3")
-SEED_MODEL = os.environ.get("SEED_PROMPT_MODEL", "seed-2-0-pro-260328")
+SEED_MODEL = os.environ.get("SEED_PROMPT_MODEL", "seed-2-0-code-preview-260328")
 
 
 def load_env():
